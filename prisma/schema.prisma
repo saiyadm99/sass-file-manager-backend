@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum FileType {
+  IMAGE
+  VIDEO
+  PDF
+  AUDIO
+}
+
+enum TokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(ADMIN)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  folders         Folder[]
+  files           File[]
+  subscriptions   UserSubscription[]
+  tokens          AuthToken[]
+
+  @@map("users")
+}
+
+model SubscriptionPackage {
+  id              String    @id @default(cuid())
+  name            String    @unique
+
+  maxFolders      Int
+  maxNestingLevel Int
+  allowedTypes    FileType[]
+  maxFileSizeMB   Int
+  totalFileLimit  Int
+  filesPerFolder  Int
+
+  isActive        Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  userSubs        UserSubscription[]
+
+  @@map("subscription_packages")
+}
+
+model UserSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  packageId  String
+
+  startAt    DateTime @default(now())
+  endAt      DateTime?
+
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pkg        SubscriptionPackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
+
+  @@index([userId, endAt])
+  @@index([packageId])
+  @@map("user_subscriptions")
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+
+  parentId  String?
+  depth     Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Folder[] @relation("FolderTree")
+  files     File[]
+
+  @@index([userId, parentId])
+  @@index([userId, deletedAt])
+  @@map("folders")
+}
+
+model File {
+  id           String   @id @default(cuid())
+  userId       String
+  folderId     String
+
+  name         String
+  originalName String
+
+  fileType     FileType
+  mimeType     String
+
+  sizeBytes    Int
+  storageKey   String
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder       Folder @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  @@index([userId, deletedAt])
+  @@index([userId, folderId, deletedAt])
+  @@index([folderId, deletedAt])
+  @@map("files")
+}
+
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  type      TokenType
+  tokenHash String    @unique
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("auth_tokens")
+}
